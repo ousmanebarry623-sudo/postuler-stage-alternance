@@ -32,6 +32,8 @@ export default function JobsPage() {
   const [minScore, setMinScore] = useState(30)
   const [sourceFilter, setSourceFilter] = useState('')
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
+  const [scrapeError, setScrapeError] = useState<string | null>(null)
+  const [scrapeResult, setScrapeResult] = useState<string | null>(null)
 
   const fetchJobs = useCallback(() => {
     setLoading(true)
@@ -45,17 +47,29 @@ export default function JobsPage() {
         if (arr.length > 0) setLastUpdate(arr[0].job_offers?.scraped_at)
         setLoading(false)
       })
+      .catch(() => setLoading(false))
   }, [minScore, sourceFilter])
 
   useEffect(() => { fetchJobs() }, [fetchJobs])
 
   const triggerScrape = async () => {
     setScraping(true)
-    await fetch('/api/scrape/trigger', {
-      method: 'POST',
-    })
-    setScraping(false)
-    fetchJobs()
+    setScrapeError(null)
+    setScrapeResult(null)
+    try {
+      const res = await fetch('/api/scrape/trigger', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setScrapeError(data.error ?? 'Erreur inconnue')
+      } else {
+        setScrapeResult(`${data.scraped} offres trouvées, ${data.matched} correspondances calculées.`)
+        fetchJobs()
+      }
+    } catch {
+      setScrapeError('Impossible de contacter le serveur.')
+    } finally {
+      setScraping(false)
+    }
   }
 
   return (
@@ -74,6 +88,17 @@ export default function JobsPage() {
           {scraping ? 'Recherche...' : '↻ Actualiser'}
         </button>
       </div>
+
+      {scrapeError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+          ❌ {scrapeError}
+        </div>
+      )}
+      {scrapeResult && (
+        <div className="bg-green-50 border border-green-200 text-green-700 rounded-xl px-4 py-3 text-sm">
+          ✓ {scrapeResult}
+        </div>
+      )}
 
       <div className="flex gap-4 flex-wrap items-center bg-gray-50 rounded-xl p-3 border">
         <label className="flex items-center gap-2 text-sm">
