@@ -32,43 +32,58 @@ export default function ProfilePage() {
   const [profileId, setProfileId] = useState<string | null>(null)
   const [newSkill, setNewSkill] = useState('')
   const [newSkillCategory, setNewSkillCategory] = useState<'technical' | 'soft'>('technical')
-  const [saved, setSaved] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'ok' | 'error'>('idle')
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/profile').then(r => r.json()).then(data => {
-      if (data) {
-        const { skills: s, experiences: e, education: _ed, ...p } = data
-        setProfile(p)
-        setProfileId(p.id)
-        setSkills(s ?? [])
-        setExperiences((e ?? []).map((exp: Experience & { technologies: string[] }) => ({
-          ...exp,
-          technologies: Array.isArray(exp.technologies) ? exp.technologies.join(', ') : ''
-        })))
-      }
-    })
+    fetch('/api/profile')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.id) {
+          const { skills: s, experiences: e, education: _ed, ...p } = data
+          setProfile(p)
+          setProfileId(p.id)
+          setSkills(s ?? [])
+          setExperiences((e ?? []).map((exp: Experience & { technologies: string[] }) => ({
+            ...exp,
+            technologies: Array.isArray(exp.technologies) ? exp.technologies.join(', ') : ''
+          })))
+        }
+      })
+      .catch(err => console.error('Erreur chargement profil:', err))
   }, [])
 
   const saveProfile = useCallback(async () => {
     setSaving(true)
+    setSaveStatus('idle')
+    setSaveError(null)
     try {
+      let res: Response
       if (profileId) {
-        await fetch('/api/profile', {
+        res = await fetch('/api/profile', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: profileId, ...profile })
         })
       } else {
-        const res = await fetch('/api/profile', {
+        res = await fetch('/api/profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(profile)
         })
-        const data = await res.json()
-        setProfileId(data.id)
       }
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      const data = await res.json()
+      if (!res.ok) {
+        setSaveStatus('error')
+        setSaveError(data.error ?? `Erreur ${res.status}`)
+      } else {
+        if (!profileId) setProfileId(data.id)
+        setSaveStatus('ok')
+        setTimeout(() => setSaveStatus('idle'), 3000)
+      }
+    } catch (err) {
+      setSaveStatus('error')
+      setSaveError('Impossible de contacter le serveur.')
     } finally {
       setSaving(false)
     }
@@ -81,9 +96,11 @@ export default function ProfilePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profile_id: profileId, name: newSkill.trim(), category: newSkillCategory })
     })
-    const skill = await res.json()
-    setSkills(prev => [...prev, skill])
-    setNewSkill('')
+    if (res.ok) {
+      const skill = await res.json()
+      setSkills(prev => [...prev, skill])
+      setNewSkill('')
+    }
   }
 
   const removeSkill = async (id: string) => {
@@ -98,8 +115,10 @@ export default function ProfilePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profile_id: profileId, title: '', company: '', start_date: null, end_date: null, description: '', technologies: [], results: '', position: experiences.length })
     })
-    const data = await res.json()
-    setExperiences(prev => [...prev, { ...data, technologies: '' }])
+    if (res.ok) {
+      const data = await res.json()
+      setExperiences(prev => [...prev, { ...data, technologies: '' }])
+    }
   }
 
   const saveExperience = async (exp: Experience) => {
@@ -151,10 +170,29 @@ export default function ProfilePage() {
             ))}
           </div>
         </div>
+
+        {saveStatus === 'error' && saveError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
+            ❌ Erreur : {saveError}
+          </div>
+        )}
+        {saveStatus === 'ok' && (
+          <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-3 py-2 text-sm">
+            ✓ Profil sauvegardé avec succès
+          </div>
+        )}
+
         <button onClick={saveProfile} disabled={saving}
           className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm disabled:opacity-50 transition">
-          {saving ? 'Sauvegarde...' : saved ? '✓ Sauvegardé' : 'Sauvegarder'}
+          {saving ? 'Sauvegarde...' : 'Sauvegarder'}
         </button>
+
+        {!profileId && (
+          <p className="text-xs text-amber-600">⚠ Profil non encore enregistré — cliquez Sauvegarder pour créer votre profil.</p>
+        )}
+        {profileId && (
+          <p className="text-xs text-gray-400">ID : {profileId.substring(0, 8)}…</p>
+        )}
       </section>
 
       {profileId && (
