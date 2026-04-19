@@ -51,9 +51,8 @@ export default function JobsPage() {
 
   const triggerScrape = async () => {
     setScraping(true)
-    await fetch('/api/scrape/run', {
+    await fetch('/api/scrape/trigger', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET ?? ''}` }
     })
     setScraping(false)
     fetchJobs()

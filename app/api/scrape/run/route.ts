@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase'
 import { runAllScrapers } from '@/lib/scrapers'
 import { computeScore } from '@/lib/matching/score'
 
+export const maxDuration = 60
+
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
