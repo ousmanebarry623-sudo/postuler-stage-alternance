@@ -7,8 +7,9 @@ async function getJob(id: string) {
   return res.json()
 }
 
-export default async function JobDetailPage({ params }: { params: { id: string } }) {
-  const job = await getJob(params.id)
+export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const job = await getJob(id)
   if (!job) return (
     <div className="max-w-2xl mx-auto p-6">
       <Link href="/jobs" className="text-blue-600 underline text-sm">← Retour</Link>
