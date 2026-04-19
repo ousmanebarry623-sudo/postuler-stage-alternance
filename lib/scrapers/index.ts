@@ -1,17 +1,13 @@
 import { ScraperResult } from './types'
-import { scrape as scrapeLinkedIn } from './linkedin'
-import { scrape as scrapeIndeed } from './indeed'
-import { scrape as scrapeWTJ } from './welcometothejungle'
-import { scrape as scrapeApec } from './apec'
-import { scrape as scrapeHelloWork } from './hellowork'
+import { scrape as scrapeAdzuna } from './adzuna'
+import { scrape as scrapeFranceTravail } from './francetravail'
+import { scrape as scrapeRemotive } from './remotive'
 
 export async function runAllScrapers(query: string, location: string): Promise<ScraperResult[]> {
   const scrapers = [
-    { name: 'linkedin', fn: scrapeLinkedIn },
-    { name: 'indeed', fn: scrapeIndeed },
-    { name: 'witj', fn: scrapeWTJ },
-    { name: 'apec', fn: scrapeApec },
-    { name: 'hellowork', fn: scrapeHelloWork },
+    { name: 'adzuna', fn: scrapeAdzuna },
+    { name: 'francetravail', fn: scrapeFranceTravail },
+    { name: 'remotive', fn: scrapeRemotive },
   ]
 
   const results = await Promise.allSettled(
@@ -21,11 +17,18 @@ export async function runAllScrapers(query: string, location: string): Promise<S
   const offers: ScraperResult[] = []
   results.forEach((result, i) => {
     if (result.status === 'fulfilled') {
+      console.log(`[scraper:${scrapers[i].name}] ${result.value.length} offers`)
       offers.push(...result.value)
     } else {
       console.error(`[scraper:${scrapers[i].name}] failed:`, result.reason)
     }
   })
 
-  return offers
+  // Deduplicate by apply_url
+  const seen = new Set<string>()
+  return offers.filter(o => {
+    if (!o.apply_url || seen.has(o.apply_url)) return false
+    seen.add(o.apply_url)
+    return true
+  })
 }
