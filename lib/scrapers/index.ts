@@ -4,14 +4,16 @@ import { scrape as scrapeFranceTravail } from './francetravail'
 import { scrape as scrapeRemotive } from './remotive'
 import { scrape as scrapeIndeed } from './indeed'
 import { scrape as scrapeHelloWork } from './hellowork'
+import { scrape as scrapeArbeitnow } from './arbeitnow'
 
 export async function runAllScrapers(query: string, location: string): Promise<ScraperResult[]> {
   const scrapers = [
     { name: 'indeed', fn: scrapeIndeed },
     { name: 'hellowork', fn: scrapeHelloWork },
+    { name: 'arbeitnow', fn: scrapeArbeitnow },
+    { name: 'remotive', fn: scrapeRemotive },
     { name: 'adzuna', fn: scrapeAdzuna },
     { name: 'francetravail', fn: scrapeFranceTravail },
-    { name: 'remotive', fn: scrapeRemotive },
   ]
 
   const results = await Promise.allSettled(
