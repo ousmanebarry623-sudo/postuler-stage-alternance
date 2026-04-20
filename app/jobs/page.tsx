@@ -29,7 +29,7 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<JobMatch[]>([])
   const [loading, setLoading] = useState(true)
   const [scraping, setScraping] = useState(false)
-  const [minScore, setMinScore] = useState(30)
+  const [minScore, setMinScore] = useState(0)
   const [sourceFilter, setSourceFilter] = useState('')
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   const [scrapeError, setScrapeError] = useState<string | null>(null)
@@ -62,7 +62,8 @@ export default function JobsPage() {
       if (!res.ok) {
         setScrapeError(data.error ?? 'Erreur inconnue')
       } else {
-        setScrapeResult(`${data.scraped} offres trouvées, ${data.matched} correspondances calculées.`)
+        const sources = data.sources ? Object.entries(data.sources as Record<string,{count:number}>).filter(([,v])=>v.count>0).map(([k,v])=>`${k}:${v.count}`).join(', ') : ''
+        setScrapeResult(`${data.scraped} offres trouvées, ${data.matched} correspondances.${sources ? ` (${sources})` : ''}`)
         fetchJobs()
       }
     } catch {

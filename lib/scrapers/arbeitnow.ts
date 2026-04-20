@@ -6,14 +6,17 @@ export async function scrape(query: string, _location: string): Promise<ScraperR
   // Translate common French terms to English for better matching
   const englishQuery = query
     .replace(/électronique/gi, 'electronics')
-    .replace(/informatique/gi, 'software')
+    .replace(/informatique/gi, 'computer science')
     .replace(/industrielle?/gi, 'industrial')
     .replace(/alternance/gi, 'apprenticeship')
     .replace(/stage/gi, 'internship')
     .replace(/développeur?/gi, 'developer')
     .replace(/ingénieur?/gi, 'engineer')
+    .replace(/réseaux?/gi, 'network')
+    .replace(/systèmes?/gi, 'systems')
+    .replace(/embarqué/gi, 'embedded')
 
-  const params = new URLSearchParams({ search: englishQuery })
+  const params = new URLSearchParams({ search: englishQuery, language: 'en' })
   const url = `https://arbeitnow.com/api/job-board-api?${params}`
 
   console.log('[arbeitnow] fetching:', url)
