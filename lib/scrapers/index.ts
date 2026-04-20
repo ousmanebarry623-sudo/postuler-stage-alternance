@@ -2,9 +2,13 @@ import { ScraperResult } from './types'
 import { scrape as scrapeAdzuna } from './adzuna'
 import { scrape as scrapeFranceTravail } from './francetravail'
 import { scrape as scrapeRemotive } from './remotive'
+import { scrape as scrapeIndeed } from './indeed'
+import { scrape as scrapeHelloWork } from './hellowork'
 
 export async function runAllScrapers(query: string, location: string): Promise<ScraperResult[]> {
   const scrapers = [
+    { name: 'indeed', fn: scrapeIndeed },
+    { name: 'hellowork', fn: scrapeHelloWork },
     { name: 'adzuna', fn: scrapeAdzuna },
     { name: 'francetravail', fn: scrapeFranceTravail },
     { name: 'remotive', fn: scrapeRemotive },

@@ -1,63 +1,76 @@
 import { ScraperResult } from './types'
 
-function randomDelay(min = 300, max = 800) {
-  return new Promise(r => setTimeout(r, Math.random() * (max - min) + min))
-}
-
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-]
-
+// HelloWork — API interne JSON (no login needed)
 export async function scrape(query: string, location: string): Promise<ScraperResult[]> {
-  const chromium = await import('@sparticuz/chromium')
-  const { chromium: playwright } = await import('playwright-core')
-
-  const browser = await playwright.launch({
-    args: chromium.default.args,
-    executablePath: await chromium.default.executablePath(),
-    headless: true,
+  const params = new URLSearchParams({
+    k: query,
+    l: location,
+    ro: '20',
   })
-
-  const context = await browser.newContext({
-    userAgent: USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
-  })
-
-  const page = await context.newPage()
-  const results: ScraperResult[] = []
+  const url = `https://www.hellowork.com/fr-fr/emploi/recherche.html?${params}`
 
   try {
-    const url = `https://www.hellowork.com/fr-fr/emploi/recherche.html?k=${encodeURIComponent(query)}&l=${encodeURIComponent(location)}`
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
-    await randomDelay()
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'fr-FR,fr;q=0.9',
+      },
+      signal: AbortSignal.timeout(12000),
+    })
 
-    const cards = await page.$$('[data-type="job"]')
-
-    for (const card of cards.slice(0, 20)) {
-      await randomDelay(100, 300)
-      const title = await card.$eval('h3', el => el.textContent?.trim() ?? '').catch(() => '')
-      const company = await card.$eval('[data-cy="company-name"]', el => el.textContent?.trim() ?? '').catch(() => '')
-      const loc = await card.$eval('[data-cy="job-location"]', el => el.textContent?.trim() ?? '').catch(() => '')
-      const linkEl = await card.$('a')
-      const href = linkEl ? await linkEl.getAttribute('href') : null
-      const link = href ? (href.startsWith('http') ? href : `https://www.hellowork.com${href}`) : ''
-
-      if (!link || !title) continue
-
-      results.push({
-        title,
-        company,
-        location: loc,
-        description: '',
-        skills_required: [],
-        contract_type: '',
-        apply_url: link,
-        source: 'hellowork',
-      })
+    if (!res.ok) {
+      console.error('[hellowork] HTTP', res.status)
+      return []
     }
-  } finally {
-    await browser.close()
-  }
 
-  return results
+    const html = await res.text()
+
+    // Extract JSON-LD job postings
+    const jsonLdMatches = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g) ?? []
+    const results: ScraperResult[] = []
+
+    for (const block of jsonLdMatches) {
+      try {
+        const json = JSON.parse(block.replace(/<script[^>]*>/, '').replace(/<\/script>/, ''))
+        const jobs = Array.isArray(json) ? json : [json]
+        for (const job of jobs) {
+          if (job['@type'] !== 'JobPosting') continue
+          const title = job.title ?? ''
+          const company = job.hiringOrganization?.name ?? ''
+          const loc = job.jobLocation?.address?.addressLocality ?? location
+          const description = (job.description ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500)
+          const applyUrl = job.url ?? job.mainEntityOfPage ?? ''
+          const contractType = job.employmentType ?? ''
+
+          if (!title || !applyUrl) continue
+          results.push({ title, company, location: loc, description, skills_required: [], contract_type: contractType, apply_url: applyUrl, source: 'hellowork' })
+        }
+      } catch { /* skip malformed blocks */ }
+    }
+
+    // Fallback: try to extract from __NEXT_DATA__ if JSON-LD is empty
+    if (results.length === 0) {
+      const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/)
+      if (nextDataMatch) {
+        try {
+          const data = JSON.parse(nextDataMatch[1])
+          const offers = data?.props?.pageProps?.jobOffers ?? data?.props?.pageProps?.offers ?? []
+          for (const offer of offers.slice(0, 20)) {
+            const title = offer.label ?? offer.title ?? ''
+            const company = offer.company?.name ?? offer.companyName ?? ''
+            const loc = offer.location ?? offer.city ?? location
+            const applyUrl = offer.url ? `https://www.hellowork.com${offer.url}` : ''
+            if (!title || !applyUrl) continue
+            results.push({ title, company, location: loc, description: '', skills_required: [], contract_type: offer.contractType ?? '', apply_url: applyUrl, source: 'hellowork' })
+          }
+        } catch { /* skip */ }
+      }
+    }
+
+    return results
+  } catch (err) {
+    console.error('[hellowork] error:', err)
+    return []
+  }
 }

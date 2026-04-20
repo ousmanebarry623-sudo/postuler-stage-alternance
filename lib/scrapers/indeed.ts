@@ -1,63 +1,57 @@
 import { ScraperResult } from './types'
 
-function randomDelay(min = 300, max = 800) {
-  return new Promise(r => setTimeout(r, Math.random() * (max - min) + min))
-}
-
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-]
-
+// Indeed France — RSS feed public (no login needed)
 export async function scrape(query: string, location: string): Promise<ScraperResult[]> {
-  const chromium = await import('@sparticuz/chromium')
-  const { chromium: playwright } = await import('playwright-core')
-
-  const browser = await playwright.launch({
-    args: chromium.default.args,
-    executablePath: await chromium.default.executablePath(),
-    headless: true,
-  })
-
-  const context = await browser.newContext({
-    userAgent: USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
-  })
-
-  const page = await context.newPage()
-  const results: ScraperResult[] = []
+  const params = new URLSearchParams({ q: query, l: location, sort: 'date' })
+  const url = `https://fr.indeed.com/rss?${params}`
 
   try {
-    const url = `https://fr.indeed.com/jobs?q=${encodeURIComponent(query)}&l=${encodeURIComponent(location)}`
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
-    await randomDelay()
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        Accept: 'application/rss+xml, application/xml, text/xml',
+      },
+      signal: AbortSignal.timeout(12000),
+    })
 
-    const cards = await page.$$('.job_seen_beacon')
+    if (!res.ok) {
+      console.error('[indeed] HTTP', res.status)
+      return []
+    }
 
-    for (const card of cards.slice(0, 20)) {
-      await randomDelay(100, 300)
-      const title = await card.$eval('h2.jobTitle span', el => el.textContent?.trim() ?? '').catch(() => '')
-      const company = await card.$eval('[data-testid="company-name"]', el => el.textContent?.trim() ?? '').catch(() => '')
-      const loc = await card.$eval('[data-testid="text-location"]', el => el.textContent?.trim() ?? '').catch(() => '')
-      const linkEl = await card.$('a[data-jk]')
-      const href = linkEl ? await linkEl.getAttribute('href') : null
-      const link = href ? `https://fr.indeed.com${href}` : ''
+    const xml = await res.text()
+    const items = xml.match(/<item>([\s\S]*?)<\/item>/g) ?? []
 
-      if (!link || !title) continue
+    return items.slice(0, 20).flatMap(item => {
+      const get = (tag: string) =>
+        item.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`))?.[1]?.trim() ??
+        item.match(new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`))?.[1]?.trim() ?? ''
 
-      results.push({
+      const title = get('title')
+      const link = get('guid') || get('link')
+      const description = get('description').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      const company = get('source')
+
+      const contractType = /alternance/i.test(title + description) ? 'alternance'
+        : /stage/i.test(title + description) ? 'stage'
+        : /cdi/i.test(title + description) ? 'cdi'
+        : /cdd/i.test(title + description) ? 'cdd' : ''
+
+      if (!title || !link) return []
+
+      return [{
         title,
         company,
-        location: loc,
-        description: '',
+        location,
+        description,
         skills_required: [],
-        contract_type: '',
-        apply_url: link.split('?')[0],
+        contract_type: contractType,
+        apply_url: link,
         source: 'indeed',
-      })
-    }
-  } finally {
-    await browser.close()
+      }]
+    })
+  } catch (err) {
+    console.error('[indeed] error:', err)
+    return []
   }
-
-  return results
 }
